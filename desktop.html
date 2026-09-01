@@ -818,11 +818,11 @@ td .del { background: none; border: none; color: var(--red); cursor: pointer; fo
 
   async function callVision(cfg, imageDataUrl, category) {
     const promptText = '你是健康数据提取助手。请从图片中提取健康数据并返回JSON。' +
-      (category === 'weight' ? '识别体重（单位：斤，若给出公斤需换算成斤）及可能的BMI、体脂率、肌肉量、水分。' : '') +
+      (category === 'weight' ? '识别体重：只看秤面/屏幕上的数字，输出原始数值和单位，不要自行换算单位。同时识别可能的BMI、体脂率、肌肉量、水分。单位用kg/斤/lb表示。' : '') +
       (category === 'food' ? '识别食物摄入：热量(千卡)、碳水化合物(g)、蛋白质(g)、脂肪(g)。' : '') +
       (category === 'exercise' ? '识别运动：类型、距离(km)、时长、消耗热量(千卡)、平均心率。' : '') +
       '只返回一个JSON对象，不要解释，不要Markdown。JSON结构：' +
-      '{"category":"weight","weight":{"value":65.2,"bmi":21.3,"body_fat":18.5,"muscle":50,"water":55}}' +
+      '{"category":"weight","weight":{"value":65.2,"unit":"kg","bmi":21.3,"body_fat":18.5,"muscle":50,"water":55}}' +
       '或 {"category":"food","nutrition":{"intake":800,"carb":90,"protein":40,"fat":30}}' +
       '或 {"category":"exercise","exercises":[{"type":"跑步","distance_km":5,"duration_min":30,"duration_sec":0,"calories":300,"avg_hr":150}]}' +
       '如果没有对应数据，对应字段用null或省略。';
@@ -868,12 +868,21 @@ td .del { background: none; border: none; color: var(--red); cursor: pointer; fo
   function normalizeExtracted(obj) {
     const out = { category: (obj && obj.category) || 'other' };
     if (obj.weight && obj.weight.value != null) {
+      let wv = Number(obj.weight.value);
+      if (!isNaN(wv) && wv > 0) {
+        const unit = String(obj.weight.unit || '').toLowerCase();
+        if (unit === 'kg' || unit === '千克' || unit === '公斤') wv = wv * 2;
+        else if (unit === 'lb' || unit === 'lbs' || unit === '磅') wv = wv * 0.90718474;
+        else if (unit === 'g' || unit === '克') wv = wv / 500;
+        wv = Math.round(wv * 10) / 10;
+      }
       out.weight = {
-        value: Number(obj.weight.value),
+        value: wv,
         bmi: obj.weight.bmi != null ? Number(obj.weight.bmi) : null,
         body_fat: obj.weight.body_fat != null ? Number(obj.weight.body_fat) : null,
         muscle: obj.weight.muscle != null ? Number(obj.weight.muscle) : null,
-        water: obj.weight.water != null ? Number(obj.weight.water) : null
+        water: obj.weight.water != null ? Number(obj.weight.water) : null,
+        suspicious: wv < 30 || wv > 600
       };
     }
     if (obj.nutrition && (obj.nutrition.intake != null || obj.nutrition.carb != null || obj.nutrition.protein != null || obj.nutrition.fat != null)) {
@@ -915,6 +924,7 @@ td .del { background: none; border: none; color: var(--red); cursor: pointer; fo
       if (d.weight.muscle != null) m.push('肌肉 ' + d.weight.muscle);
       if (d.weight.water != null) m.push('水分 ' + d.weight.water + '%');
       if (m.length) s += '\n' + m.join(' · ');
+      if (d.weight.suspicious) s += '\n⚠️ 疑似识别错误（数值超出常见范围），请在右侧输入框手动确认';
       parts.push(s);
     }
     if (d.nutrition && (d.nutrition.intake != null || d.nutrition.carb != null || d.nutrition.protein != null || d.nutrition.fat != null)) {
@@ -994,11 +1004,11 @@ td .del { background: none; border: none; color: var(--red); cursor: pointer; fo
 
   async function callText(cfg, text, category) {
     const promptText = '你是健康数据提取助手。请从以下文本中提取健康数据并返回JSON。' +
-      (category === 'weight' ? '识别体重（单位：斤，若给出公斤需换算成斤）及可能的BMI、体脂率、肌肉量、水分。' : '') +
+      (category === 'weight' ? '识别体重：只看秤面/屏幕上的数字，输出原始数值和单位，不要自行换算单位。同时识别可能的BMI、体脂率、肌肉量、水分。单位用kg/斤/lb表示。' : '') +
       (category === 'food' ? '识别食物摄入：热量(千卡)、碳水化合物(g)、蛋白质(g)、脂肪(g)。' : '') +
       (category === 'exercise' ? '识别运动：类型、距离(km)、时长、消耗热量(千卡)、平均心率。' : '') +
       '只返回一个JSON对象，不要解释，不要Markdown。JSON结构：' +
-      '{"category":"weight","weight":{"value":65.2,"bmi":21.3,"body_fat":18.5,"muscle":50,"water":55}}' +
+      '{"category":"weight","weight":{"value":65.2,"unit":"kg","bmi":21.3,"body_fat":18.5,"muscle":50,"water":55}}' +
       '或 {"category":"food","nutrition":{"intake":800,"carb":90,"protein":40,"fat":30}}' +
       '或 {"category":"exercise","exercises":[{"type":"跑步","distance_km":5,"duration_min":30,"duration_sec":0,"calories":300,"avg_hr":150}]}' +
       '如果没有对应数据，对应字段用null或省略。\n\n文本内容：\n' + text;
